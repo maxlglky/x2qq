@@ -52,9 +52,10 @@ const DEFAULTS = {
     compact: true,
     maxChars: 1200,
     maxMarkdownChars: 4000,
-    style: 'media',
+    style: 'markdown',
     arkTemplate: 24,
     maxPerRun: 5,
+    maxPushAgeHours: 6,
     sendImages: true,
     maxImages: 6,
     // imageMode: inline = 图内嵌进卡片（走素材库，100 张上限）

@@ -31,6 +31,22 @@ export class Poller {
     this.xStateFile = cfg.statePath ? `${cfg.statePath}.xgraphql.json` : null;
     this.translationCache = new Map();
     this.photoTagCache = new Map();
+    // 推文详情缓存：一轮里翻译、引用块、回复块会反复用到同一条推文
+    this.detailCache = new Map();
+  }
+
+  /** 带缓存的 fetchTweetDetail（10 分钟内复用，避免重复请求 fxtwitter）。 */
+  async tweetDetail(id) {
+    const key = String(id || '').replace(/^x:/, '');
+    if (!key) return null;
+    const hit = this.detailCache.get(key);
+    if (hit && Date.now() - hit.at < 10 * 60_000) return hit.detail;
+    const detail = await fetchTweetDetail(key).catch(() => null);
+    if (detail) {
+      if (this.detailCache.size > 200) this.detailCache.clear();
+      this.detailCache.set(key, { detail, at: Date.now() });
+    }
+    return detail;
   }
 
   /** 账号列表；没配置 accounts 时退化成单账号（兼容旧配置）。 */
@@ -249,7 +265,7 @@ export class Poller {
     const parentId = displayTweet?.replyToStatusId;
     if (!parentId) return null;
     try {
-      const parent = await fetchTweetDetail(parentId);
+      const parent = await this.tweetDetail(parentId);
       if (!parent) return null;
       const photos = await this.wantInlineImages(acfg).catch(() => false);
       const parentExtras = await this.fetchTweetExtras(acfg, parentId);
@@ -423,7 +439,7 @@ export class Poller {
 
     for (const { tweet, key } of batch) {
       const statusId = (tweet.link || '').match(/status\/(\d+)/)?.[1] || tweet.id;
-      const detail = await fetchTweetDetail(statusId).catch(() => null);
+      const detail = await this.tweetDetail(statusId);
       const { displayTweet, repost } = resolveRepost(tweet, detail, acfg);
       const text = formatTweet(displayTweet, acfg);
 
@@ -501,9 +517,11 @@ export class Poller {
         }
         // 被回复的那条原推也要翻译（回复对象可能是任何账号，甚至没订阅的）
         if (displayTweet?.replyToStatusId) {
+          // fxtwitter 只给「回复给谁」，原推正文要单独取一次（有缓存）
+          const parentDetail = await this.tweetDetail(displayTweet.replyToStatusId);
           const r = await this.translateBody(
             acfg,
-            detail?.replyTo?.text || '',
+            parentDetail?.text || '',
             displayTweet.replyToStatusId,
           );
           translatedReplyText = r.text;
@@ -660,7 +678,7 @@ export class Poller {
   async sendTweetToGroup(account, tweet, groupOpenid, options = {}) {
     const acfg = this.accountCfg(account);
     const statusId = (tweet.link || '').match(/status\/(\d+)/)?.[1] || tweet.id;
-    const detail = await fetchTweetDetail(statusId).catch(() => null);
+    const detail = await this.tweetDetail(statusId);
     const { displayTweet, repost } = resolveRepost(tweet, detail, acfg);
     const text = formatTweet(displayTweet, acfg);
 
@@ -735,9 +753,10 @@ export class Poller {
         if (!translateBy) translateBy = q.by;
       }
       if (displayTweet?.replyToStatusId) {
+        const parentDetail = await this.tweetDetail(displayTweet.replyToStatusId);
         const r = await this.translateBody(
           acfg,
-          detail?.replyTo?.text || '',
+          parentDetail?.text || '',
           displayTweet.replyToStatusId,
         );
         translatedReplyText = r.text;

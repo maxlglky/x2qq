@@ -26,13 +26,13 @@
 | 图片人物标记 | 图下 `> X账号1 及另外4人` |
 | 外链卡片 | fanicon / TikTok 这类链接预览：发预览图 + `> 来自 fanicon.net` |
 | 视频 | 卡片里提示 `> 🎬 视频共 N 段`，视频单独一条消息发（QQ 的 Markdown 放不下视频） |
-| 翻译 | 正文、引用、被回复原推都翻，页脚标 `由X自动翻译` |
+| 翻译 | 正文、引用、被回复原推都翻；用 X 自带翻译时标 `由X自动翻译`，接大模型时标 `由<模型名>翻译` |
 
 **工程上的几个特点**：
 
 - **零依赖**：只用 Node.js 内置模块，clone 下来直接跑，不需要 `npm install`
-- **零第三方服务**：用自己账号的 cookie 直连 X，不需要 RSS 服务、不需要付费 API
-- **会听指令**：`/订阅`、`/退订`、`/最新`、`/转推 <推文id>`、`/翻译 开`、`/回复 <账号> 关` 都在聊天里完成
+- **默认零第三方服务**：用自己账号的 cookie 直连 X 拉推、X 自带翻译，不需要 RSS 服务或付费 API；想用大模型翻译再自己填一个 OpenAI 兼容接口
+- **会听指令**：`/订阅`、`/退订`、`/最新`、`/转推 <推文id>`、`/翻译 开`、`/回复 <账号> 关`、`/转贴 <账号> 开` 都在聊天里完成
 - **群聊、私聊同一套逻辑**
 
 ---
@@ -292,7 +292,10 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 | `forward.mediaCacheHours` | `6` | 内嵌图片素材缓存的有效期。超过就重新上传，避免复用已被回收的链接（群里表现是图片一直「加载中」）。`0` = 每次重传 |
 | `forward.mediaPruneAt` | `90` | 素材库用量达到多少张时触发回收 |
 | `forward.mediaKeep` | `60` | 回收时删到多少张为止（从最旧的开始删） |
-| `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限 |
+| `forward.maxMarkdownChars` | `4000` | 单条 Markdown 上限。超出会**按行**截断并加 `…`，不会把 `![](…)` 切成半截 |
+| `forward.maxChars` | `1200` | `style: "text"` 纯文本卡片的正文上限 |
+| `forward.compact` | `true` | `style: "text"` 时用紧凑排版（不紧凑会带 `🕒`/`🔗` 前缀行） |
+| `forward.arkTemplate` | `24` | `style: "ark"` 用的 Ark 模板号 |
 | `forward.style` | `markdown` | `markdown` / `text` / `media` / `ark` |
 | `forward.markdownImage` | — | 老配置项，等价于 `imageMode: "inline"`；新配置直接用 `imageMode`，不需要它 |
 | `forward.perMinute` / `perDay` | `15` / `200` | 每个会话的发送频率限制 |
@@ -401,6 +404,7 @@ node src/main.js media             # 素材库状态：张数 / 缓存是否过�
 node src/main.js media --clean     # 图片又发不出去时，把素材库回收到 mediaKeep 以下
 node src/main.js xprobe            # 验证 X cookie，打印最新推文
 node src/main.js groups            # 查看已登记会话与订阅关系
+node src/main.js groups add <openid>       # 手动添加一个会话并开启推送
 node src/main.js groups enable <openid>    # 打开某个会话的推送
 node src/main.js groups disable <openid>   # 关掉某个会话的推送
 node src/main.js groups remove <openid>    # 从名单里删掉
@@ -425,8 +429,9 @@ src/
 ├─ tweet.js     推文对象规范化、去重键、行首 @ 剥离
 ├─ qq.js        QQ OpenAPI：token / 发送 / 素材上传 / 分片上传 / 媒体 / 素材回收
 ├─ gateway.js   WebSocket 网关：群事件 + 私聊事件
-├─ format.js    Markdown 卡片渲染（转推 / 回复 / 引用 / 人物标记 / 卡片来源 / 视频提示 / 翻译标记）
+├─ format.js    Markdown 卡片渲染（转推 / 回复 / 引用 / 人物标记 / 卡片来源 / 视频提示 / 翻译标记 / 长链接折叠）
 ├─ fx.js        FxTwitter 详情：引用、真实图片尺寸、视频多档
+├─ translate.js 翻译：走 X 自带接口，或调 OpenAI 兼容的大模型（失败自动回退）
 ├─ store.js     state.json：会话、已读、开关、健康状态
 ├─ http.js      请求封装（代理、超时、大小上限、瞬断自动重试）
 ├─ commands.js  指令关键词匹配、推文 id 解析
@@ -496,7 +501,7 @@ Gateway(WS)                    Poller                       QQ OpenAPI
 ### 测试与调试技巧
 
 ```bash
-node test/pipeline.test.js          # 25 个用例：渲染、过滤、去重、限频、素材回收、卡片元素、端到端
+node test/pipeline.test.js          # 43 个用例：渲染、过滤、去重、限频、素材回收、卡片元素、翻译、端到端
 node src/main.js once --dry-run     # 真跑一轮但只打印，改样式时最常用
 node src/main.js xprobe             # 只验证 X 侧
 ```
@@ -591,7 +596,8 @@ Markdown 会把这种「纯横线的一行」当分隔线，还会顺手把**上
 
 `api` 模式下：提示词要求保留 `@提及` / `#标签` / 链接 / emoji 不动，只翻译正文；
 接口报错、超时、返回空都会**自动回退到 X 翻译**（日志里一条 `大模型翻译失败，回退到 X 自动翻译`），
-不会因为模型挂了就不翻译。
+不会因为模型挂了就不翻译。正文、引用推文、被回复的那条原推走同一条路径
+（原推正文要先单独取一次，有 10 分钟缓存，同一轮不会重复请求）。
 
 **图片下面那行「某某 及另外 N 人」是哪来的？** X 的图片可以标记人物，
 数据在 `extended_entities.media[].features.all.tags[]`（每个 tag 带 `name` / `screen_name` / `user_id`）。
@@ -697,13 +703,14 @@ fxtwitter 给的链接本身就带 `name=orig`，但走 GraphQL 兜底时拿到�
 | 限制 | 说明 |
 | --- | --- |
 | 素材库 **100 张** | QQ 的硬上限，超了连头像都传不上去（`40035007`）。本程序会自动回收最旧的，但**历史消息里的图会随回收失效** |
-| `#标签` 不翻译 | X 的翻译接口不翻标签，又不接第三方，所以保留原文（见[设计取舍](#设计取舍)） |
+| `#标签` 不翻译 | 标签在 X 眼里是实体，翻译接口不翻；接大模型时也要求它逐字照抄。所以标签永远保留原文写法 |
 | 被动回复最多 5 条 | `/最新`、`/转推` 走被动回复，卡片占 1 条，所以最多再跟 4 张图 / 视频；超出的内容不会发 |
 | 视频软限 30MB / 硬限 200MB | 超过 30MB 平台会把视频**降级成「文件」**（不能直接播放），超过 200MB 直接报错。程序按码率 × 时长估算挑档，`maxVideoMB` 可调 |
 | 卡片里不能放视频 | QQ 的 Markdown 不支持视频，视频永远是单独一条消息 |
 | 图片会被平台审核 | 违规的图发不出去（`40034006`）。这时卡片照发，配图位置换成一行 `> ⚠️ 共 N 张配图因内容违规无法发送`，不会整条降级成纯文本 |
 | `pbs.twimg.com` 客户端连不上 | 必须经素材库转存；直连公网图片 URL 在 QQ 客户端里加载不出来 |
 | cookie 会过期 | 几周到几个月不等，日志报 `401` 时重新复制一次 |
+| 大模型翻译依赖外部接口 | 要能访问 `translate.api.baseUrl`；失败会自动回退 X 翻译，不影响推送 |
 
 ---
 
@@ -721,6 +728,8 @@ fxtwitter 给的链接本身就带 `name=orig`，但走 GraphQL 兜底时拿到�
 | 老消息里的图突然不见了 | 素材被回收了，平台限制，无法恢复 |
 | 视频没发或变糊 | 看日志里的 `视频选档：1280x720 @2176kbps ≈ 7.8MB（上限 30MB）`。想换更高画质就调大 `maxVideoMB`，但超过 30MB 会变成文件 |
 | 卡片里没有引用块 | 引用推文获取失败（X 限流或推文已删），日志会有 `准备引用推文失败` |
+| 配了大模型翻译，卡片却标「由X自动翻译」 | 说明这次大模型调用失败了（日志 `大模型翻译失败，回退到 X 自动翻译: …`）。检查 `baseUrl` / `model` / `apiKey` 和网络 |
+| 大模型翻译很慢 | 调大 `translate.api.timeoutMs`（默认 30s）。超时只会回退 X 翻译，不会卡住推送 |
 | 重复推送 | 转推的转帖 id 与原推 id 已双向标记；若仍出现，检查 `state.json` 是否被并发写 |
 | `/订阅` 没反应 | 看日志有没有 `收到指令`；没有则是网关事件没进来（intents / 机器人能力） |
 | 私聊发指令没反应 | 机器人后台没开「单聊」能力；看日志有没有 `C2C_MESSAGE_CREATE` |

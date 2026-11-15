@@ -118,6 +118,27 @@ export function extractHashtags(text) {
  * 只看译文的话会把后面整句汉字都吞进链接里。
  */
 /**
+ * 按上限截断卡片。不能直接截字符：可能切在 `![alt #600px #400px](url)` 中间，
+ * QQ 那边会显示成半截 Markdown。所以优先在换行处切，并且丢掉截断的链接/图片行。
+ */
+export function truncateMarkdown(text, max) {
+  const src = String(text || '');
+  const limit = Number(max) > 0 ? Number(max) : 0;
+  if (!limit || src.length <= limit) return src;
+
+  let cut = src.slice(0, limit);
+  const nl = cut.lastIndexOf('\n');
+  if (nl > limit * 0.5) cut = cut.slice(0, nl);
+
+  // 最后一行如果起了个链接/图片却没闭合，整行去掉
+  const open = cut.lastIndexOf('](');
+  if (open >= 0 && !cut.slice(open).includes(')')) {
+    const prevLine = cut.lastIndexOf('\n');
+    cut = prevLine > 0 ? cut.slice(0, prevLine) : cut.slice(0, open);
+  }
+  return `${cut.trimEnd()}…`;
+}
+/**
  * 长链接的显示文字：`idol-afterschool.com/…`（只留域名 + 省略号，点开还是原链接）。
  */
 export function urlLinkLabel(url) {
@@ -252,13 +273,9 @@ export function linkifyEntities(text, options = {}) {
   });
   withTags = withFallback.replace(/\u0001(\d+)\u0001/g, (_m, i) => guarded[Number(i)] ?? '');
 
-  return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) => {
-    const url = urls[Number(i)] ?? '';
-    if (limit > 0 && url.length > limit) {
-      return `[${urlLinkLabel(url)}](${url})`;
-    }
-    return url;
-  });
+  return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) =>
+    shortenLongUrls(urls[Number(i)] ?? '', limit),
+  );
 }
 
 // 只由「横线类字符」组成的行会被当成分隔线（`---`），还会把**上一行**变成标题。
@@ -498,5 +515,5 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     lines.push(meta.join('｜'));
   }
 
-  return truncate(lines.join('\n'), cfg.forward.maxMarkdownChars ?? 4000);
+  return truncateMarkdown(lines.join('\n'), cfg.forward.maxMarkdownChars ?? 4000);
 }

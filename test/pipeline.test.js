@@ -29,6 +29,7 @@ import {
   shortenLongUrls,
   similarHashtag,
   resolveHashtagRun,
+  truncateMarkdown,
   urlLinkLabel,
 } from '../src/format.js';
 import { request } from '../src/http.js';
@@ -1118,6 +1119,18 @@ test('译文把标签字改掉时，仍能链回原文标签（#夜行性自論 
   assert.match(glued, /\[#夜行性自論\]\(https:\/\/x\.com\/hashtag\/[^)]+\)とても楽しみ/);
   assert.equal(resolveHashtagRun('夜行性自论とても', ['夜行性自論']).tag, '夜行性自論');
   assert.equal(resolveHashtagRun('夜行性自论とても', ['夜行性自論']).rest, 'とても');
+});
+
+test('卡片超长时按行截断，不会切出半截 Markdown', () => {
+  const body = `# 标题\n\n${'あ'.repeat(100)}\n\n![图 #600px #400px](qqbot-media://image/v1/ABC)\n\n结尾`;
+  const cut = truncateMarkdown(body, 130);
+  assert.ok(cut.length <= 131, '不超上限');
+  assert.ok(cut.endsWith('…'), '有省略号');
+  assert.ok(!/\]\([^)]*$/.test(cut), '没有未闭合的链接');
+  assert.ok(!cut.includes('](qqbot-media://image/v1/ABC'), '被截断的图片行整行丢掉');
+
+  assert.equal(truncateMarkdown('短文本', 4000), '短文本', '没超上限原样返回');
+  assert.equal(truncateMarkdown('短文本', 0), '短文本', '0 当作不限');
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

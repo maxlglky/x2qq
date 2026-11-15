@@ -20,24 +20,27 @@
     "intervalJitterSec": 60,
     "accountStaggerSec": 3,
     "style": "markdown",
-    "imageMode": "auto",
+    "compact": true,
     "includeLink": true,
     "maxChars": 1200,
     "maxMarkdownChars": 4000,
     "maxPerRun": 5,
     "maxPushAgeHours": 6,
     "maxImages": 6,
+    "sendImages": true,
+    "imageMode": "auto",
     "mediaInlineUntil": 92,
     "headerCacheHours": 12,
     "avatarCacheHours": 168,
     "mediaCacheHours": 6,
     "mediaPruneAt": 90,
     "mediaKeep": 60,
-    "translateHashtags": true,
+    "originalImage": false,
+    "maxVideoMB": 30,
+    "longUrlChars": 25,
     "perMinute": 15,
     "perDay": 200,
-    "timeZone": "Asia/Shanghai",
-    "longUrlChars": 25
+    "timeZone": "Asia/Shanghai"
   },
   "net": {
     "proxy": "http://127.0.0.1:17899",
@@ -78,6 +81,7 @@
       "provider": "xcookie",
       "userId": "0000000000000000000",
       "includeRetweets": true,
+      "includeReplies": true,
       "maxAgeHours": 24
     }
   ]
