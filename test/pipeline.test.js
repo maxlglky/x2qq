@@ -27,6 +27,8 @@ import {
   linkifyEntities,
   linkifyMentions,
   shortenLongUrls,
+  similarHashtag,
+  resolveHashtagRun,
   urlLinkLabel,
 } from '../src/format.js';
 import { request } from '../src/http.js';
@@ -1089,6 +1091,33 @@ test('超长链接改成「域名/…」的跳转链接，阈值可配', () => {
   assert.match(formatTweetMarkdown(tweet, cfg, {}), /\[idol-afterschool\.com\/…\]\(https:/);
   cfg.forward.longUrlChars = 0;
   assert.doesNotMatch(formatTweetMarkdown(tweet, cfg, {}), /\]\(https:\/\/idol-afterschool/);
+});
+
+test('译文把标签字改掉时，仍能链回原文标签（#夜行性自論 → #夜行性自论）', () => {
+  const original = '『 #愛美 と #千春 の #夜行性自論』';
+  const translated = '『#愛美 与 #千春 的 #夜行性自论』';
+  const tags = extractHashtags(original);
+  assert.deepEqual(tags, ['愛美', '千春', '夜行性自論']);
+
+  assert.equal(similarHashtag('夜行性自论', tags), '夜行性自論');
+  assert.equal(similarHashtag('完全不同的标签', tags), null);
+  assert.equal(similarHashtag('愛美', tags), '愛美');
+
+  const out = linkifyEntities(translated, { hashtags: tags });
+  // 三条都要有链接，且被改字的标签显示回原文
+  assert.equal((out.match(/\]\(https:\/\/x\.com\/hashtag\//g) || []).length, 3);
+  assert.match(out, /\[#夜行性自論\]\(https:\/\/x\.com\/hashtag\//);
+  assert.doesNotMatch(out, /#夜行性自论/);
+
+  // 原文没有的标签：兜底也链上，指向自己
+  const extra = linkifyEntities('新增 #テスト', { hashtags: ['愛美'] });
+  assert.match(extra, /\[#テスト\]\(https:\/\/x\.com\/hashtag\/%E3%83%86%E3%82%B9%E3%83%88\)/);
+
+  // 标签后面紧跟正文时，只链标签本身，剩下的字留在外面
+  const glued = linkifyEntities('#夜行性自论とても楽しみ', { hashtags: ['夜行性自論'] });
+  assert.match(glued, /\[#夜行性自論\]\(https:\/\/x\.com\/hashtag\/[^)]+\)とても楽しみ/);
+  assert.equal(resolveHashtagRun('夜行性自论とても', ['夜行性自論']).tag, '夜行性自論');
+  assert.equal(resolveHashtagRun('夜行性自论とても', ['夜行性自論']).rest, 'とても');
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

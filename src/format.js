@@ -77,6 +77,8 @@ const ARTICLE_EXCERPT_CHARS = 200;
 const MENTION_RE = /(?<![\w@])@([A-Za-z0-9_]{1,15})(?![\w@])/g;
 // X 的标签可以用中文/假名/数字/下划线，碰到空白、标点、emoji 就结束
 const HASHTAG_RE = /(?<![\w#@])#([\p{L}\p{N}_]{1,80})/gu;
+// 兜底用：要求标签前后都是边界，避免把后面紧贴的汉字一起吞进链接
+const HASHTAG_BOUNDARY_RE = /(?<![\w#@])#([\p{L}\p{N}_]{1,40})(?![\p{L}\p{N}_])/gu;
 
 /**
  * 把正文里的 @某人 变成和 X 一样的可点击链接（只看提及，不看标签）。
@@ -141,6 +143,60 @@ export function shortenLongUrls(text, maxChars) {
   );
 }
 
+/**
+ * 图文里「#后面一串字」应该切到哪：优先用原文的已知标签，
+ * 支持三种情况：整段就是标签、标签是前缀（后面紧跟正文）、
+ * 或者被译文改了字（論→论）但要按长度对回原文。
+ */
+export function resolveHashtagRun(run, known = []) {
+  const text = String(run || '');
+  if (!text) return { tag: '', rest: '' };
+  if (known.includes(text)) return { tag: text, rest: '' };
+
+  let best = null;
+  for (const candidate of known) {
+    if (!candidate || candidate.length > text.length) continue;
+    const head = text.slice(0, candidate.length);
+    if (head === candidate) {
+      if (!best || candidate.length > best.length) best = candidate;
+      continue;
+    }
+    let same = 0;
+    for (let i = 0; i < candidate.length; i += 1) {
+      if (head[i] === candidate[i]) same += 1;
+    }
+    if (same >= Math.ceil(candidate.length * 0.6) && (!best || candidate.length > best.length)) {
+      best = candidate;
+    }
+  }
+  if (best) return { tag: best, rest: text.slice(best.length) };
+  return { tag: text, rest: '' };
+}
+
+/**
+ * 在原文标签表里找出「疑似同一个」标签：长度相同、六成以上的字位置一致。
+ * 译文把 論 改成 论 这种就靠它还原，避免链到一个空标签页。
+ */
+export function similarHashtag(tag, known = []) {
+  const text = String(tag || '');
+  if (!text) return null;
+  let best = null;
+  let bestScore = 0;
+  for (const candidate of known) {
+    if (!candidate || candidate.length !== text.length) continue;
+    let same = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      if (candidate[i] === text[i]) same += 1;
+    }
+    if (same > bestScore) {
+      bestScore = same;
+      best = candidate;
+    }
+  }
+  if (!best) return null;
+  return bestScore >= Math.ceil(text.length * 0.6) ? best : null;
+}
+
 export function linkifyEntities(text, options = {}) {
   const src = String(text || '');
   const limit = Number(options.longUrlChars);
@@ -179,6 +235,22 @@ export function linkifyEntities(text, options = {}) {
       return `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})`;
     });
   }
+
+  // 译文可能把标签里的字换掉（論→论、繁体→简体），精确匹配就会漏；
+  // 再按「前后都是边界」兜一次底，避免像 #夜行性自论 这样整条标签没有链接。
+  const guarded = [];
+  const maskedLinks = withTags.replace(/\[[^\]\n]*\]\([^)\s]*\)/g, (m) => {
+    guarded.push(m);
+    return `\u0001${guarded.length - 1}\u0001`;
+  });
+  const withFallback = maskedLinks.replace(HASHTAG_BOUNDARY_RE, (_m, run) => {
+    // 译文可能把标签里的字换掉（論→论），也可能让标签和后面的正文粘在一起。
+    // resolveHashtagRun 会用原文标签表把「标签 + 剩余正文」切开。
+    const { tag, rest } = resolveHashtagRun(run, known);
+    if (!tag) return _m;
+    return `[#${tag}](https://x.com/hashtag/${encodeURIComponent(tag)})${rest}`;
+  });
+  withTags = withFallback.replace(/\u0001(\d+)\u0001/g, (_m, i) => guarded[Number(i)] ?? '');
 
   return withTags.replace(/\u0000(\d+)\u0000/g, (_m, i) => {
     const url = urls[Number(i)] ?? '';
