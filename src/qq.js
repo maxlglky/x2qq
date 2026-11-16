@@ -279,8 +279,14 @@ export class QQClient {
       forward.imageMode || (forward.markdownImage === true ? 'inline' : 'message');
     if (mode === 'inline') return (this.lastInlineDecision = true);
     if (mode !== 'auto') return (this.lastInlineDecision = false);
-    const total = await this.mediaTotal().catch(() => 0);
     const limit = forward.mediaInlineUntil ?? 80;
+    let total = await this.mediaTotal().catch(() => 0);
+    if (total >= limit) {
+      // 库快满时先回收旧素材再判断：能腾出空间就继续内嵌，
+      // 别因为配额一时占满就把图拆成单独消息。
+      const freed = await this.pruneMediaIfNeeded({ force: true }).catch(() => 0);
+      if (freed > 0) total = await this.mediaTotal({ maxAgeMs: 0 }).catch(() => total - freed);
+    }
     return (this.lastInlineDecision = total < limit);
   }
 

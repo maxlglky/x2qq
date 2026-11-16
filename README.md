@@ -286,7 +286,7 @@ set CLASH_EXE=C:\path\to\clash-win64.exe
 | `forward.quote` | `true` | 引用推文是否一起渲染（关掉只保留主推） |
 | `forward.verifiedBadge` | `true` | 蓝 V 徽章的**总开关**。只有账号真的认证才显示，主推头部 / 转帖内容 / 引用块 / 回复块用的是同一套判断（认证来源见[设计取舍](#设计取舍)） |
 | `forward.imageMode` | `auto` | 图片放哪：`inline` 内嵌进卡片 / `message` 单独发图片消息 / `media` 图文同条（文字+首图一个气泡，纯文本） / `auto` 素材库宽裕时内嵌、快满了自动改成单独发（推荐） |
-| `forward.mediaInlineUntil` | `92` | `auto` 模式的切换线：素材库少于这个张数才内嵌 |
+| `forward.mediaInlineUntil` | `92` | `auto` 模式的切换线：素材库少于这个张数才内嵌。到线时**先回收旧素材再判断**，腾得出空间就继续内嵌 |
 | `forward.headerCacheHours` | `12` | 头像 / 徽章素材的缓存时长，过期后重新上传（防止素材被淘汰后链接失效） |
 | `forward.avatarCacheHours` | `168` | 头像/徽章的素材复用时长（头像基本不变，缓存久一点省配额） |
 | `forward.mediaCacheHours` | `6` | 内嵌图片素材缓存的有效期。超过就重新上传，避免复用已被回收的链接（群里表现是图片一直「加载中」）。`0` = 每次重传 |
@@ -687,7 +687,7 @@ fxtwitter 给的链接本身就带 `name=orig`，但走 GraphQL 兜底时拿到�
 
 | 值 | 效果 |
 | --- | --- |
-| `auto`（默认） | 素材库 < `mediaInlineUntil` 时内嵌；快满了自动降级成单独发（兜底，几乎不会触发） |
+| `auto`（默认） | 素材库 < `mediaInlineUntil` 时内嵌；到线时先按 `mediaPruneAt` 回收旧素材再判断，腾得出空间就继续内嵌，只有真的回收不了才降级成单独发 |
 | `inline` | 永远内嵌 |
 | `message` | 永远单独发图片消息（不占配额） |
 | `media` | 图文同条：文字 + 首图一条消息，其余图接着发。不占配额，但**正文只能是纯文本** |

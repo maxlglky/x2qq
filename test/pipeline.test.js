@@ -1133,6 +1133,42 @@ test('卡片超长时按行截断，不会切出半截 Markdown', () => {
   assert.equal(truncateMarkdown('短文本', 0), '短文本', '0 当作不限');
 });
 
+test('auto 模式库快满时先回收素材，腾出空间就继续内嵌', async () => {
+  const forward = { imageMode: 'auto', mediaInlineUntil: 92, mediaPruneAt: 90, mediaKeep: 60 };
+  const qq = new QQClient({ ...baseConfig(), forward }, captureLogger());
+
+  let total = 95;
+  let pruneCalls = 0;
+  qq.mediaTotal = async () => total;
+  qq.pruneMediaIfNeeded = async ({ force } = {}) => {
+    pruneCalls += 1;
+    if (!force) return 0;
+    const freed = total - 60;
+    total = 60;
+    return freed;
+  };
+
+  // 95 ≥ 92：先回收，回收完 60 < 92 → 仍然内嵌
+  assert.equal(await qq.wantInlineImages(forward), true);
+  assert.equal(pruneCalls, 1);
+  assert.equal(total, 60);
+
+  // 库还宽裕时不做多余回收
+  pruneCalls = 0;
+  total = 20;
+  assert.equal(await qq.wantInlineImages(forward), true);
+  assert.equal(pruneCalls, 0);
+
+  // 回收也腾不出空间 → 才降级成单独发
+  total = 99;
+  qq.pruneMediaIfNeeded = async () => 0;
+  assert.equal(await qq.wantInlineImages(forward), false);
+
+  // mode 显式设置时不看库容
+  assert.equal(await qq.wantInlineImages({ imageMode: 'inline' }), true);
+  assert.equal(await qq.wantInlineImages({ imageMode: 'message' }), false);
+});
+
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
   assert.equal(formatFooterTime(new Date('2026-11-06T11:48:00Z'), 'Asia/Shanghai'), '2026-11-06，19:48');
 
