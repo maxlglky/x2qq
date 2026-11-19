@@ -596,6 +596,22 @@ export function extractTimelineItems(json, screenName) {
   return out;
 }
 
+/**
+ * 时间线条目是不是「本账号自己发的」（或者他转推的）。
+ * UserRepliesTimeline 的会话模块里会混进别人发的父推，
+ * 那些不能当成账号的新推去推送，否则卡片会标成本人、内容却是别人写的。
+ */
+export function isOwnTimelineItem(item, handle) {
+  const self = String(handle || '')
+    .replace(/^@/, '')
+    .toLowerCase();
+  if (!self) return true;
+  if (item?.isRetweet) return true;
+  const m = String(item?.link || '').match(/x\.com\/([^/]+)\/status/i);
+  if (!m) return true;
+  return m[1].toLowerCase() === self;
+}
+
 export async function fetchXCookie(cfg, { request, logger, stateFile, meta }) {
   const client = new XCookieClient(cfg, { request, logger, stateFile });
   if (!client.enabled) {
@@ -621,6 +637,13 @@ export async function fetchXCookie(cfg, { request, logger, stateFile, meta }) {
     } catch (err) {
       if (logger) logger.warn(`拉取回复时间线失败（只推主时间线）: ${err.message}`);
     }
+  }
+
+  // 会话模块里会混进别人发的父推：只保留本账号发的（和他的转推）
+  const before = items.length;
+  items = items.filter((it) => isOwnTimelineItem(it, handle));
+  if (logger && items.length < before) {
+    logger.debug(`[${handle}] 过滤掉 ${before - items.length} 条别人的推文（会话父推）`);
   }
 
   if (meta && !meta.avatar) {

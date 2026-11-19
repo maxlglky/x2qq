@@ -309,7 +309,8 @@ export function escapeMarkdownText(text) {
 
 /** Markdown 卡片样式（模仿 QQ 推文卡片：头像+名字+徽章 / 正文 / 内嵌图 / 引用块页脚）。 */
 export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
-  const name = ctx.name || cfg.x.displayName || tweet.author || 'X';
+  // 名字优先用推文自己的作者，配置里的 displayName 只做兜底
+  const name = ctx.name || tweet.author || cfg.x.displayName || 'X';
   const header = ctx.header || {};
   const images = Array.isArray(ctx.images) ? ctx.images : ctx.image ? [ctx.image] : [];
 

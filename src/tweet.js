@@ -44,7 +44,9 @@ export function toTweet(item, cfg = {}) {
     text: truncate(text.replace(/\n{3,}/g, '\n\n'), 2000),
     title: item.title || '',
     link,
-    author: cfg.displayName || item.author || '',
+    // 作者以推文本身为准：时间线里可能混进别人发的推（会话里的父推），
+    // 一律套用本账号的 displayName 会把别人的推标成本人
+    author: item.author || cfg.displayName || '',
     // 账号是否真的认证（决定卡片上要不要画蓝 V）
     verified: item.verified === true,
     images: item.images || [],

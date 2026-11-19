@@ -21,6 +21,7 @@ import {
   extractCardLink,
   userInfo,
   xTweetToItem,
+  isOwnTimelineItem,
 } from '../src/xgraphql.js';
 import { isVerifiedAuthor } from '../src/fx.js';
 import { cleanTranslation, translateConfig, translateWithApi } from '../src/translate.js';
@@ -1315,6 +1316,48 @@ test('视频文件名用「昵称 日期 时间」，发送时用这个名字', 
   } finally {
     server.close();
   }
+});
+
+test('会话里混进来的「别人的推文」不会当成账号自己发的', () => {
+  // 时间线里只有本账号发的、以及他转推的才算数
+  assert.equal(
+    isOwnTimelineItem({ link: 'https://x.com/yunachan_akb48/status/1', isRetweet: false }, 'yunachan_akb48'),
+    true,
+  );
+  assert.equal(
+    isOwnTimelineItem({ link: 'https://x.com/az_yuki_xxx/status/2', isRetweet: false }, 'yunachan_akb48'),
+    false,
+    '别人的推（会话父推）不算',
+  );
+  assert.equal(
+    isOwnTimelineItem({ link: 'https://x.com/az_yuki_xxx/status/3', isRetweet: true }, 'yunachan_akb48'),
+    true,
+    '转推别人的保留',
+  );
+
+  // 作者名以推文本身为准，不能被账号 displayName 顶掉
+  const tweet = toTweet(
+    {
+      id: 'x:9',
+      link: 'https://x.com/az_yuki_xxx/status/9',
+      text: '@yunachan_akb48 那时候谢谢你为我应援啦',
+      author: '八木愛月 (AKB48)',
+      published: '2026-11-19T08:21:00Z',
+      isReply: true,
+    },
+    { displayName: '秋山由奈' },
+  );
+  assert.equal(tweet.author, '八木愛月 (AKB48)');
+
+  const cfg = baseConfig();
+  cfg.x.displayName = '秋山由奈';
+  const card = formatTweetMarkdown(tweet, cfg, {});
+  assert.match(card, /八木愛月 \(AKB48\)/, '头部用推文作者');
+  assert.doesNotMatch(card.split('\n')[0], /秋山由奈/);
+
+  // 没有作者信息时才回退到配置里的名字
+  const fallback = toTweet({ id: 'x:8', link: 'https://x.com/a/status/8', text: 't' }, { displayName: '秋山由奈' });
+  assert.equal(fallback.author, '秋山由奈');
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
