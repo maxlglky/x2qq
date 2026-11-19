@@ -475,7 +475,10 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
     // 引用块里的外链卡片
     const qCard = String(quote.cardSource || '').trim();
     if (qCard) inner.push(`来自 ${qCard}`);
-    if (quote.videoUrl) inner.push('🎬 视频见下条消息');
+    // 引用推文里的视频：和主推文一样，卡片里留提示，视频单独一条消息
+    const qVideoCount = (Array.isArray(quote.videos) ? quote.videos.length : 0) + (quote.videoUrl ? 1 : 0);
+    if (qVideoCount === 1) inner.push('🎬 视频共 1 段，见下条消息');
+    else if (qVideoCount > 1) inner.push(`🎬 视频共 ${qVideoCount} 段，见下条消息`);
     const qmeta = [];
     if (quote.time) qmeta.push(formatFooterTime(new Date(quote.time), cfg.forward.timeZone));
     const qlink = quote.article?.url || quote.link || '';

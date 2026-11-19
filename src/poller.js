@@ -286,6 +286,23 @@ export class Poller {
     }
   }
 
+  /**
+   * 引用块 / 回复块里要单独发的视频：推文自带视频 + 外链 player 卡片的视频。
+   * 和主推文一样走 deliver 的 sendVideo（码率挑档、100MB 上限）。
+   */
+  videosOfBlocks(...blocks) {
+    const out = [];
+    for (const block of blocks) {
+      if (!block) continue;
+      for (const v of block.videos || []) {
+        if (v?.url) out.push(v);
+      }
+      // 外链卡片里的视频流只有一个直链，包成和自带视频同构的形状
+      if (block.videoUrl) out.push({ url: block.videoUrl, variants: [{ url: block.videoUrl, bitrate: 0 }] });
+    }
+    return out;
+  }
+
   async collectTweets(account) {
     const acc = account || this.accounts()[0];
     const acfg = this.accountCfg(acc);
@@ -550,10 +567,8 @@ export class Poller {
             ? await this.buildReplyContext(displayTweet, acfg)
             : null;
           const mainPhotoTags = await this.mainPhotoTags(acfg, displayTweet, tweet, detail);
-          // 引用推文 / 被回复原推里的外链视频（player 卡片）
-          const quoteVideos = [quoteBlock?.videoUrl, replyContext?.videoUrl]
-            .filter(Boolean)
-            .map((url) => ({ url, variants: [{ url, bitrate: 0 }] }));
+          // 引用推文 / 被回复原推里的视频：自带视频 + 外链 player 卡片，都当普通视频发
+          const quoteVideos = this.videosOfBlocks(quoteBlock, replyContext);
           const result = await this.qq.deliver(
             group.openid,
             text,
@@ -741,9 +756,7 @@ export class Poller {
       ? await this.buildReplyContext(displayTweet, acfg)
       : null;
     const mainPhotoTags = await this.mainPhotoTags(acfg, displayTweet, tweet, detail);
-    const quoteVideos = [quoteBlock?.videoUrl, replyContext?.videoUrl]
-      .filter(Boolean)
-      .map((url) => ({ url, variants: [{ url, bitrate: 0 }] }));
+    const quoteVideos = this.videosOfBlocks(quoteBlock, replyContext);
     const wantTranslate = this.store?.isTranslateOn?.(groupOpenid) === true;
     let translatedText = '';
     let translatedQuoteText = '';

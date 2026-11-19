@@ -9,6 +9,30 @@ export function isVerifiedAuthor(author) {
   return Boolean(v.verified || v.type);
 }
 
+/**
+ * 统一整理媒体里的视频：只留 mp4 变体，按码率升序，`url` 给一个可下的兜底。
+ * 主推文和引用推文共用，保证两边的发送逻辑一致。
+ */
+export function normalizeVideos(all = []) {
+  return (Array.isArray(all) ? all : [])
+    .filter((m) => m?.type === 'video' || m?.type === 'gif')
+    .map((m) => {
+      const variants = (m.variants || [])
+        .filter((v) => /\.mp4/i.test(v.url || ''))
+        .sort((a, b) => (a.bitrate || 0) - (b.bitrate || 0))
+        .map((v) => ({ url: v.url, bitrate: v.bitrate || 0 }));
+      return {
+        url: m.url || variants[variants.length - 1]?.url,
+        variants,
+        thumbnail: m.thumbnail_url,
+        width: m.width,
+        height: m.height,
+        duration: m.duration,
+      };
+    })
+    .filter((v) => v.url);
+}
+
 /** 拉取单条推文的完整信息（正文、时间、全部图片、视频直链）。 */
 export async function fetchTweetDetail(id) {
   if (!id) return null;
@@ -32,23 +56,7 @@ export async function fetchTweetDetail(id) {
     .filter((m) => m?.type === 'photo' && m.url)
     .map((m) => ({ url: m.url, width: m.width, height: m.height }));
 
-  const videos = all
-    .filter((m) => m?.type === 'video' || m?.type === 'gif')
-    .map((m) => {
-      const variants = (m.variants || [])
-        .filter((v) => /\.mp4/i.test(v.url || ''))
-        .sort((a, b) => (a.bitrate || 0) - (b.bitrate || 0))
-        .map((v) => ({ url: v.url, bitrate: v.bitrate || 0 }));
-      return {
-        url: m.url || variants[variants.length - 1]?.url,
-        variants,
-        thumbnail: m.thumbnail_url,
-        width: m.width,
-        height: m.height,
-        duration: m.duration,
-      };
-    })
-    .filter((v) => v.url);
+  const videos = normalizeVideos(all);
 
   return {
     id: String(tweet.id || id),
@@ -88,6 +96,8 @@ function normalizeQuote(q) {
     photos: all
       .filter((m) => m?.type === 'photo' && m.url)
       .map((m) => ({ url: m.url, width: m.width, height: m.height })),
+    // 引用推文自带的视频：和主推一样，卡片里只留提示，视频单独一条消息发
+    videos: normalizeVideos(all),
   };
 }
 

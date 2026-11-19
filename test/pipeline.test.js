@@ -1175,6 +1175,77 @@ test('auto 模式库快满时先回收素材，腾出空间就继续内嵌', asy
   assert.equal(await qq.wantInlineImages({ imageMode: 'message' }), false);
 });
 
+test('引用推文里的视频：卡片留提示，视频单独发（和主推一致）', async () => {
+  const cfg = baseConfig();
+  const tweet = {
+    id: 'x:4',
+    link: 'https://x.com/a/status/4',
+    text: '主推正文',
+    published: new Date('2026-11-19T12:00:00Z'),
+    images: [],
+    isReply: false,
+    isRetweet: false,
+  };
+  const quoteBase = {
+    name: 'AKB48公式',
+    text: '引用正文',
+    images: [],
+    time: '2026-11-18T12:30:00Z',
+    link: 'https://x.com/b/status/3',
+  };
+
+  // 自带 1 段视频
+  const one = formatTweetMarkdown(tweet, cfg, {
+    quote: { ...quoteBase, videos: [{ url: 'https://v/a.mp4', variants: [{ url: 'https://v/a.mp4', bitrate: 0 }] }] },
+  });
+  assert.match(one, /^> 🎬 视频共 1 段，见下条消息$/m);
+
+  // 自带 2 段
+  const two = formatTweetMarkdown(tweet, cfg, {
+    quote: {
+      ...quoteBase,
+      videos: [
+        { url: 'https://v/a.mp4', variants: [] },
+        { url: 'https://v/b.mp4', variants: [] },
+      ],
+    },
+  });
+  assert.match(two, /^> 🎬 视频共 2 段，见下条消息$/m);
+
+  // 外链 player 卡片的视频（只有一个直链）
+  const card = formatTweetMarkdown(tweet, cfg, {
+    quote: { ...quoteBase, videoUrl: 'https://v/card.mp4' },
+  });
+  assert.match(card, /^> 🎬 视频共 1 段，见下条消息$/m);
+
+  // 没有视频就不出现提示
+  const none = formatTweetMarkdown(tweet, cfg, { quote: { ...quoteBase } });
+  assert.doesNotMatch(none, /🎬/);
+
+  // poller：把「自带视频 + 卡片视频」摊平成待发列表，顺序是自带优先
+  const poller = new Poller({ cfg, qq: null, store: null, logger: captureLogger() });
+  const flat = poller.videosOfBlocks(
+    { videos: [{ url: 'https://v/a.mp4' }], videoUrl: '' },
+    { videos: [], videoUrl: 'https://v/card.mp4' },
+    null,
+  );
+  assert.deepEqual(
+    flat.map((v) => v.url),
+    ['https://v/a.mp4', 'https://v/card.mp4'],
+  );
+  assert.ok(flat[1].variants.length === 1, '卡片视频也包成同构形状');
+
+  // prepareQuote 要把 videos 透传出去
+  const qq = new QQClient({ ...cfg, forward: { ...cfg.forward } }, captureLogger());
+  qq.prepareInlineImages = async () => [];
+  const prepared = await qq.prepareQuote(
+    { author: 'AKB48公式', text: 't', videos: [{ url: 'https://v/a.mp4', variants: [] }] },
+    { photos: false },
+  );
+  assert.equal(prepared.videos.length, 1);
+  assert.equal(prepared.videos[0].url, 'https://v/a.mp4');
+});
+
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
   assert.equal(formatFooterTime(new Date('2026-11-06T11:48:00Z'), 'Asia/Shanghai'), '2026-11-06，19:48');
 

@@ -509,7 +509,9 @@ export class QQClient {
       images,
       photoTags: Array.isArray(quote.photoTags) ? quote.photoTags : [],
       cardSource: quoteCard || cardVideoUrl ? quote.card?.domain || '' : '',
-      // 外链 player 卡片的视频：卡片里放不下，交给上层单独发
+      // 引用推文自带的视频：和主推一样，卡片里只留提示，视频交给上层单独发
+      videos: Array.isArray(quote.videos) ? quote.videos : [],
+      // 外链 player 卡片的视频：同样单独发
       videoUrl: cardVideoUrl,
       article,
       link: quote.url,
