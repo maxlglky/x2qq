@@ -11,7 +11,7 @@ import {
 import { fetchTweetDetail, resolveRepost } from './fx.js';
 import { buildArkCard, formatTweet, formatTweetMarkdown } from './format.js';
 import { translateConfig, translateWithApi } from './translate.js';
-import { originalImageUrl, sleep } from './util.js';
+import { originalImageUrl, sleep, videoFileName } from './util.js';
 
 /**
  * 轮询多个账号的推文源 → 去重 → 推送给「订阅了该账号」的群。
@@ -182,6 +182,18 @@ export class Poller {
     return [{ url: src, variants: [{ url: src, bitrate: 0 }] }];
   }
 
+  /**
+   * 给视频起个「昵称 日期 时间.mp4」的文件名（QQ 里直接显示这个）。
+   * 转推时用原推作者和原推时间，和卡片上显示的一致。
+   */
+  nameVideos(videos, author, date, timeZone) {
+    if (!Array.isArray(videos)) return [];
+    return videos.map((video) => ({
+      ...video,
+      fileName: videoFileName(author, date, timeZone),
+    }));
+  }
+
   /** 引用推文要单独发出去的图片（message 模式）：自带图片优先，没有就用卡片图。 */
   quotePhotosFor(quote, extras, acfg) {
     if (!quote) return [];
@@ -294,11 +306,15 @@ export class Poller {
     const out = [];
     for (const block of blocks) {
       if (!block) continue;
+      const list = [];
       for (const v of block.videos || []) {
-        if (v?.url) out.push(v);
+        if (v?.url) list.push(v);
       }
       // 外链卡片里的视频流只有一个直链，包成和自带视频同构的形状
-      if (block.videoUrl) out.push({ url: block.videoUrl, variants: [{ url: block.videoUrl, bitrate: 0 }] });
+      if (block.videoUrl) {
+        list.push({ url: block.videoUrl, variants: [{ url: block.videoUrl, bitrate: 0 }] });
+      }
+      out.push(...this.nameVideos(list, block.name, block.time, this.cfg.forward?.timeZone));
     }
     return out;
   }
@@ -481,7 +497,12 @@ export class Poller {
       let header = null;
       const extras = await this.fetchTweetExtras(acfg, detail?.id || statusId);
       const { photos, cardSource } = this.buildPhotos(detail, tweet, extras, acfg);
-      const videos = this.videosWithCard(detail, extras);
+      const videos = this.nameVideos(
+        this.videosWithCard(detail, extras),
+        detail?.author || displayTweet?.author || acfg.x.displayName,
+        detail?.createdAt ? new Date(detail.createdAt) : displayTweet?.published || tweet.published,
+        acfg.forward.timeZone,
+      );
 
       if (acfg.forward.style === 'markdown') {
         try {
@@ -798,7 +819,12 @@ export class Poller {
       quoteVideos,
       header,
       photos,
-      videos: this.videosWithCard(detail, extras),
+      videos: this.nameVideos(
+        this.videosWithCard(detail, extras),
+        detail?.author || displayTweet?.author || acfg.x.displayName,
+        detail?.createdAt ? new Date(detail.createdAt) : displayTweet?.published || tweet.published,
+        acfg.forward.timeZone,
+      ),
       quote: quoteBlock,
       repost,
       name: repost ? detail?.author : undefined,

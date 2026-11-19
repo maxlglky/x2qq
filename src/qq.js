@@ -1038,7 +1038,9 @@ export class QQClient {
             maxBytes: Math.min(Math.max(pick.cap, 100 * 1024 * 1024), 200 * 1024 * 1024),
           });
           if (!local) throw new Error('视频下载失败');
-          const info = await this.uploadGroupFileBuffer(groupOpenid, local.buffer, local.name, 2);
+          // 文件名用「昵称 日期 时间」，由上层算好放进 video.fileName
+          const fileName = video.fileName || local.name;
+          const info = await this.uploadGroupFileBuffer(groupOpenid, local.buffer, fileName, 2);
           const extra = nextExtra();
           if (extra) await this.sendGroupMedia(groupOpenid, info, '🎬 视频', extra);
           result.videos = (result.videos || 0) + 1;

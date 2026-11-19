@@ -24,7 +24,7 @@ import {
 } from '../src/xgraphql.js';
 import { isVerifiedAuthor } from '../src/fx.js';
 import { cleanTranslation, translateConfig, translateWithApi } from '../src/translate.js';
-import { formatFooterTime, originalImageUrl } from '../src/util.js';
+import { formatFooterTime, originalImageUrl, videoFileName } from '../src/util.js';
 import {
   formatTweet,
   formatTweetMarkdown,
@@ -1244,6 +1244,77 @@ test('引用推文里的视频：卡片留提示，视频单独发（和主推�
   );
   assert.equal(prepared.videos.length, 1);
   assert.equal(prepared.videos[0].url, 'https://v/a.mp4');
+});
+
+test('视频文件名用「昵称 日期 时间」，发送时用这个名字', async () => {
+  assert.equal(
+    videoFileName('秋山由奈', new Date('2026-11-19T14:15:00Z'), 'Asia/Shanghai'),
+    '秋山由奈 2026-11-19 22-15.mp4',
+  );
+  // 非法字符要清掉（Windows 不允许 : / * ? 等）
+  assert.equal(
+    videoFileName('A/B:C*?', new Date('2026-11-19T14:15:00Z'), 'Asia/Shanghai'),
+    'A_B_C__ 2026-11-19 22-15.mp4',
+  );
+  // 没有作者/时间也不该出现空名字
+  assert.equal(videoFileName('', null, 'Asia/Shanghai'), '视频.mp4');
+  assert.ok(videoFileName('x'.repeat(200), new Date(), 'Asia/Shanghai').length <= 90);
+
+  // poller 给主推视频命名：昵称取原推作者，时间取原推发布时间
+  const poller = new Poller({ cfg: baseConfig(), qq: null, store: null, logger: captureLogger() });
+  const named = poller.nameVideos(
+    [{ url: 'https://v/a.mp4', variants: [] }],
+    '秋山由奈',
+    new Date('2026-11-19T14:15:00Z'),
+    'Asia/Shanghai',
+  );
+  assert.equal(named[0].fileName, '秋山由奈 2026-11-19 22-15.mp4');
+
+  // 引用块的视频用引用作者的昵称 / 时间
+  const blockVideos = poller.videosOfBlocks(
+    {
+      name: 'AKB48公式',
+      time: '2026-11-18T12:30:00Z',
+      videos: [{ url: 'https://v/b.mp4', variants: [] }],
+      videoUrl: 'https://v/card.mp4',
+    },
+    null,
+  );
+  assert.deepEqual(
+    blockVideos.map((v) => v.fileName),
+    ['AKB48公式 2026-11-18 20-30.mp4', 'AKB48公式 2026-11-18 20-30.mp4'],
+  );
+
+  // deliver 上传时用的是 video.fileName（不是 twimg 的原始文件名）
+  const uploaded = [];
+  const { server, port } = await startMockQq(() => {});
+  try {
+    const cfg = baseConfig({
+      qq: { apiBase: `http://127.0.0.1:${port}`, tokenBase: `http://127.0.0.1:${port}` },
+    });
+    const qq = new QQClient(cfg, captureLogger());
+    qq.downloadBinary = async () => ({ buffer: Buffer.from('v'), name: '_nkCj6IHB1G6TxvM.mp4' });
+    qq.uploadGroupFileBuffer = async (_g, _buf, name) => {
+      uploaded.push(name);
+      return 'FILE_V';
+    };
+    await qq.deliver('G', 'text', [], {
+      sendImages: false,
+      style: 'markdown',
+      markdownImage: false,
+      markdownBuilder: () => '# card',
+      videos: [
+        {
+          url: 'https://video.twimg.com/a.mp4',
+          variants: [{ url: 'https://video.twimg.com/a.mp4', bitrate: 0 }],
+          fileName: '秋山由奈 2026-11-19 22-15.mp4',
+        },
+      ],
+    });
+    assert.deepEqual(uploaded, ['秋山由奈 2026-11-19 22-15.mp4']);
+  } finally {
+    server.close();
+  }
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

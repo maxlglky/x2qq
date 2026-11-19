@@ -179,6 +179,27 @@ export function formatFooterTime(date, timeZone) {
   return full ? full.replace(' ', '，') : '';
 }
 
+/**
+ * 视频文件的显示名：`昵称 2026-11-19 22-15.mp4`。
+ * 时间里的冒号换成 `-`（Windows 文件名不允许 `:`）；昵称里的非法字符换成下划线。
+ */
+export function videoFileName(author, date, timeZone, fallback = '视频') {
+  const name = String(author || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // 2026-11-19 22:15 → 2026-11-19 22-15
+  const stamp = date ? formatLocalTime(date, timeZone).replace(/:/g, '-') : '';
+  const base = [name || fallback, stamp].filter(Boolean).join(' ').trim();
+  const safe = base
+    .replace(/[\\/:*?"<>|\r\n\t]/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 80)
+    .trim();
+  return `${safe || fallback}.mp4`;
+}
+
 /** 短时间：10-27 09:03（跨年时带年份）。 */
 export function formatShortTime(date, timeZone) {
   const d = date instanceof Date ? date : new Date(date);
