@@ -15,7 +15,13 @@ import {
   resolveAccount,
 } from '../src/commands.js';
 import { dedupeKey, toTweet } from '../src/tweet.js';
-import { pickOwnAvatar, extractPhotoTags, extractCardLink, userInfo } from '../src/xgraphql.js';
+import {
+  pickOwnAvatar,
+  extractPhotoTags,
+  extractCardLink,
+  userInfo,
+  xTweetToItem,
+} from '../src/xgraphql.js';
 import { isVerifiedAuthor } from '../src/fx.js';
 import { cleanTranslation, translateConfig, translateWithApi } from '../src/translate.js';
 import { formatFooterTime, originalImageUrl } from '../src/util.js';
@@ -1497,6 +1503,64 @@ test('群指令匹配：@占位符、空格、大小写都能识别', () => {
   assert.equal(matchKeyword('退订', DEFAULT_COMMANDS.disable), true);
   assert.equal(matchKeyword('今天天气怎么样', DEFAULT_COMMANDS.enable), false);
   assert.equal(matchKeyword('你好', DEFAULT_COMMANDS.disable), false);
+});
+
+test('拿不到发布时间的推文跳过，不会当成刚发的补推', async () => {
+  // GraphQL 里 TweetWithVisibilityResults 之类的包裹节点若没解包，就没有 created_at
+  const wrapper = {
+    __typename: 'TweetWithVisibilityResults',
+    tweet: {
+      __typename: 'Tweet',
+      rest_id: '1900000000000000001',
+      legacy: { created_at: 'Tue Jun 30 14:44:06 +0000 2026', full_text: '6 月的推文' },
+      core: { user_results: { result: { core: { name: '爱美', screen_name: 'aimi_sound' } } } },
+    },
+  };
+  const unwrapped = xTweetToItem({ tweet_results: { result: wrapper } }, 'aimi_sound');
+  assert.equal(unwrapped.id, 'x:1900000000000000001');
+  assert.equal(unwrapped.published, '2026-06-30T14:44:06.000Z', '解包后拿得到真实时间');
+  assert.equal(unwrapped.text, '6 月的推文');
+
+  // 真没有 created_at：留空，绝不拿当前时间顶替
+  const noDate = xTweetToItem(
+    { tweet_results: { result: { __typename: 'Tweet', rest_id: '999', legacy: { full_text: '没有时间' } } } },
+    'x',
+  );
+  assert.equal(noDate.published, '');
+  assert.equal(toTweet(noDate, { displayName: 'x' }).published, undefined);
+
+  // tick 里这类条目不推送、只标记已读
+  const dir = await mkdtemp(join(tmpdir(), 'x2qq-'));
+  const rssFile = join(dir, 'feed.json');
+  await writeFile(
+    rssFile,
+    JSON.stringify({
+      version: 'https://jsonfeed.org/version/1.1',
+      items: [{ id: 'h9', url: 'https://x.com/a/status/1900000000000000009', title: '没有时间的推文' }],
+    }),
+    'utf8',
+  );
+
+  const sent = [];
+  const { server, port } = await startMockQq((url) => sent.push(url));
+  try {
+    const cfg = baseConfig({
+      file: rssFile,
+      qq: { apiBase: `http://127.0.0.1:${port}`, tokenBase: `http://127.0.0.1:${port}` },
+    });
+    const store = new Store(join(dir, 'state.json'));
+    await store.load();
+    store.addGroup('GROUP_ON', { enabled: true });
+
+    const qq = new QQClient(cfg, captureLogger());
+    const poller = new Poller({ cfg, qq, store, logger: captureLogger(), request });
+    const result = await poller.tick();
+
+    assert.equal(result.sent, 0, '没有发布时间的推文不推');
+    assert.equal(sent.length, 0);
+  } finally {
+    server.close();
+  }
 });
 
 test('只推送给已开启推送的群', async () => {

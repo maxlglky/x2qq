@@ -524,8 +524,11 @@ export function userInfo(userResult = {}) {
 /** 把 GraphQL 的推文节点转成我们内部统一的 items。 */
 export function xTweetToItem(node, screenName) {
   if (!node) return null;
-  const tweet = node.tweet_results?.result || node;
+  let tweet = node.tweet_results?.result || node;
   if (!tweet) return null;
+  // 敏感/年龄限制的推文会被包一层 TweetWithVisibilityResults，真实内容在 .tweet 里；
+  // 不解包就会拿不到 legacy（正文、created_at 全空），最后被当成「刚发的」。
+  if (tweet.__typename === 'TweetWithVisibilityResults' && tweet.tweet) tweet = tweet.tweet;
   if (tweet.__typename === 'TweetTombstone') return null;
 
   const legacy = tweet.legacy || {};
@@ -545,7 +548,8 @@ export function xTweetToItem(node, screenName) {
   const innerMedia = legacy.retweeted_status_result?.result?.legacy?.extended_entities?.media || [];
   const photoTags = extractPhotoTags([...media, ...innerMedia]);
 
-  const createdAt = legacy.created_at ? new Date(legacy.created_at) : new Date();
+  // 没有 created_at 就留空，绝不拿「当前时间」冒充 —— 否则老推文会像刚发的一样被推出去
+  const createdAt = legacy.created_at ? new Date(legacy.created_at) : null;
 
   return {
     id: `x:${idStr}`,
@@ -553,7 +557,7 @@ export function xTweetToItem(node, screenName) {
     link: `https://x.com/${screen}/status/${idStr}`,
     author: user.name || '',
     verified: user.verified === true,
-    published: createdAt.toISOString(),
+    published: createdAt ? createdAt.toISOString() : '',
     contentHtml: '',
     text: legacy.full_text || '',
     images,

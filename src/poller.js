@@ -414,10 +414,20 @@ export class Poller {
     const nowMs = Date.now();
     const stale = [];
     const usable = [];
+    const undated = [];
     for (const item of fresh) {
       const t = item.tweet.published?.getTime();
-      if (maxPushAgeMs > 0 && t && nowMs - t > maxPushAgeMs) stale.push(item);
+      // 拿不到发布时间就当陈旧处理：宁可漏推一条，也别把几个月前的推当新推补发
+      if (!t) undated.push(item);
+      else if (maxPushAgeMs > 0 && nowMs - t > maxPushAgeMs) stale.push(item);
       else usable.push(item);
+    }
+    if (undated.length) {
+      for (const { key } of undated) this.store.markSeen(this.seenKey(account, key));
+      await this.store.save();
+      this.logger.warn(
+        `[${label}] 跳过 ${undated.length} 条没有发布时间的推文（避免把老推当新推）`,
+      );
     }
     if (stale.length) {
       for (const { key } of stale) this.store.markSeen(this.seenKey(account, key));

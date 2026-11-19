@@ -36,7 +36,8 @@ export function toTweet(item, cfg = {}) {
   }
 
   const link = (item.link || '').trim();
-  const published = item.published ? safeDate(item.published) : undefined;
+  // 兼容 JSONFeed 风格的 date_published（本地 file provider / 老配置用得到）
+  const published = safeDate(item.published || item.date_published);
 
   return {
     id: String(item.id || link || '').trim(),

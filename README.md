@@ -466,7 +466,8 @@ Gateway(WS)                    Poller                       QQ OpenAPI
 
 1. **每个账号每轮只拉一次**，结果在内存里复用给所有会话，避免重复请求 X；
 2. **能不能推**要过三层闸门：账号级（`includeReplies/Retweets`）→ 会话级（`itemFlags`）
-   → 时间窗（`maxAgeHours` / `maxPushAgeHours`）；
+   → 时间窗（`maxAgeHours` / `maxPushAgeHours`）。**拿不到发布时间的推文直接跳过**
+   （日志 `跳过 N 条没有发布时间的推文`）——宁可漏一条，也不把半年前的旧推当新推补发；
 3. **失败不阻塞**：某个会话发送失败只记一条 `部分失败`，不影响其他会话；翻译失败则回落原文。
 
 ### 想改某个地方
