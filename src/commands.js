@@ -75,3 +75,33 @@ export function resolveAccount(accounts = [], arg) {
     null
   );
 }
+
+/** 开关类关键词。 */
+export const SWITCH_ON = ['开', '开启', '启用', 'on'];
+export const SWITCH_OFF = ['关', '关闭', '停用', 'off'];
+
+/**
+ * 解析「/回复 <账号> 开|关」「/转贴 <账号> 开|关」，
+ * 以及不带账号的批量形式「/回复 开|关」「/转贴 开|关」（作用于全部已订阅账号）。
+ * @returns {null | {kind:'replies'|'retweets', kindName:string, account:string, toggle:string, bulk:boolean, wantOn:boolean}}
+ */
+export function parseItemToggle(norm) {
+  const m = String(norm || '').match(
+    /^\/?(回复|转贴|转帖)(?:\s+([^\s]+))?(?:\s*(开|开启|启用|on|关|关闭|停用|off))?$/,
+  );
+  if (!m) return null;
+  const kind = m[1] === '回复' ? 'replies' : 'retweets';
+  const first = m[2] || '';
+  const second = m[3] || '';
+  const isSwitch = (v) => SWITCH_ON.includes(v) || SWITCH_OFF.includes(v);
+  const bulkWord = !second && isSwitch(first) ? first : '';
+  const toggle = second || bulkWord;
+  return {
+    kind,
+    kindName: kind === 'replies' ? '回复' : '转贴',
+    account: bulkWord ? '' : first,
+    toggle,
+    bulk: Boolean(bulkWord),
+    wantOn: SWITCH_ON.includes(toggle),
+  };
+}

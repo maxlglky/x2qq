@@ -11,6 +11,7 @@ import {
   extractCommandArg,
   matchKeyword,
   normalizeCommand,
+  parseItemToggle,
   parseTweetId,
   resolveAccount,
 } from '../src/commands.js';
@@ -1358,6 +1359,39 @@ test('会话里混进来的「别人的推文」不会当成账号自己发的',
   // 没有作者信息时才回退到配置里的名字
   const fallback = toTweet({ id: 'x:8', link: 'https://x.com/a/status/8', text: 't' }, { displayName: '秋山由奈' });
   assert.equal(fallback.author, '秋山由奈');
+});
+
+test('指令解析：/回复 开 与 /转贴 关 作用于全部已订阅账号', () => {
+  // 不带账号：批量
+  const bulk = parseItemToggle(normalizeCommand('/回复 开'));
+  assert.deepEqual(
+    { kind: bulk.kind, bulk: bulk.bulk, wantOn: bulk.wantOn, account: bulk.account },
+    { kind: 'replies', bulk: true, wantOn: true, account: '' },
+  );
+  const bulkOff = parseItemToggle(normalizeCommand('/转贴 关'));
+  assert.equal(bulkOff.kind, 'retweets');
+  assert.equal(bulkOff.bulk, true);
+  assert.equal(bulkOff.wantOn, false);
+
+  // 带账号：单个
+  const single = parseItemToggle(normalizeCommand('/转贴 hina 关'));
+  assert.equal(single.bulk, false);
+  assert.equal(single.account, 'hina');
+  assert.equal(single.wantOn, false);
+
+  const english = parseItemToggle(normalizeCommand('/回复 aimi on'));
+  assert.equal(english.account, 'aimi');
+  assert.equal(english.wantOn, true);
+
+  // 只发指令名：查看状态（bulk 与 account 都空）
+  const status = parseItemToggle(normalizeCommand('/转贴'));
+  assert.equal(status.bulk, false);
+  assert.equal(status.account, '');
+  assert.equal(status.toggle, '');
+
+  // 不是这条指令
+  assert.equal(parseItemToggle(normalizeCommand('/翻译 开')), null);
+  assert.equal(parseItemToggle(normalizeCommand('/订阅 hina')), null);
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

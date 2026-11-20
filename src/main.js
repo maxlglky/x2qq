@@ -10,6 +10,7 @@ import {
   extractCommandArg,
   matchKeyword,
   normalizeCommand,
+  parseItemToggle,
   parseTweetId,
   resolveAccount,
 } from './commands.js';
@@ -388,21 +389,34 @@ function createWatcher({ cfg, logger, store, qq, poller }) {
     onMessage: async (openid, msg) => {
       const norm = normalizeCommand(msg.content);
 
-      // 「/回复 aimi 关」「/转贴 aimi 关」：按账号控制是否转发回复 / 转贴
-      const kindMatch = norm.match(
-        /^\/?(回复|转贴|转帖)(?:\s+([^\s]+))?(?:\s*(开|开启|启用|on|关|关闭|停用|off))?$/,
-      );
-      if (kindMatch) {
+      // 「/回复 aimi 关」「/转贴 aimi 关」按账号控制；
+      // 「/回复 开」「/转贴 关」不带账号时作用于本会话全部已订阅账号
+      const kindCmd = parseItemToggle(norm);
+      if (kindCmd) {
         logger.info(`收到指令 [${openid.slice(0, 8)}] ${JSON.stringify(msg.content)}`);
-        const kind = kindMatch[1] === '回复' ? 'replies' : 'retweets';
-        const kindName = kind === 'replies' ? '回复' : '转贴';
-        const argAccount = kindMatch[2] || '';
-        const argSwitch = kindMatch[3] || '';
-        const target = argAccount ? resolveAccount(cfg.accounts, argAccount) : null;
+        const { kind, kindName, account, toggle, bulk, wantOn } = kindCmd;
+        const verb = kindCmd.toggle || kindName;
+        const target = account ? resolveAccount(cfg.accounts, account) : null;
+        const group = store.getGroup(openid);
+        const subs = (group?.accounts || []).filter((key) =>
+          cfg.accounts.some((a) => a.key === key),
+        );
 
         let replyText;
-        if (target && argSwitch) {
-          const wantOn = ['开', '开启', '启用', 'on'].includes(argSwitch);
+        if (bulk) {
+          if (!subs.length) {
+            replyText = `⚠️ 本会话还没订阅任何账号，先发 /订阅 <账号>，再用 /${verb} ${toggle}`;
+          } else {
+            for (const key of subs) store.setItemFlag(openid, key, kind, wantOn);
+            await store.save();
+            replyText = wantOn
+              ? `✅ 已开启全部 ${subs.length} 个已订阅账号的「${kindName}」转发：${subs.join('、')}`
+              : `🔕 已关闭全部 ${subs.length} 个已订阅账号的「${kindName}」转发：${subs.join('、')}`;
+            logger.info(
+              `会话 ${openid} 全部已订阅账号 ${kindName} -> ${wantOn ? '开' : '关'}（${subs.join(',')}）`,
+            );
+          }
+        } else if (target && toggle) {
           store.setItemFlag(openid, target.key, kind, wantOn);
           await store.save();
           replyText = wantOn
@@ -413,10 +427,14 @@ function createWatcher({ cfg, logger, store, qq, poller }) {
           const lines = ['ℹ️ 当前「' + kindName + '」转发状态：'];
           for (const acc of cfg.accounts) {
             const f = store.getItemFlags(openid, acc.key);
-            lines.push(`  ${f[kind] ? '✅' : '🔕'} ${acc.key} · ${acc.displayName}`);
+            const subscribed = subs.includes(acc.key);
+            lines.push(
+              `  ${f[kind] ? '✅' : '🔕'} ${acc.key} · ${acc.displayName}${subscribed ? '' : '（未订阅）'}`,
+            );
           }
-          lines.push(`
-用法：/ ${kindMatch[1]} <账号> 开|关`.replace('/ ', '/'));
+          lines.push(
+            `\n用法：/${verb} <账号> 开|关\n      /${verb} 开|关（作用于本会话全部已订阅账号）`,
+          );
           replyText = lines.join('\n');
         }
 

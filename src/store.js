@@ -90,6 +90,10 @@ export class Store {
     return this.groups;
   }
 
+  getGroup(openid) {
+    return this.groups.find((g) => g.openid === openid) || null;
+  }
+
   hasGroup(openid) {
     return this.groups.some((g) => g.openid === openid);
   }
