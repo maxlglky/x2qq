@@ -12,6 +12,7 @@ import {
   matchKeyword,
   normalizeCommand,
   parseItemToggle,
+  formatItemStatus,
   parseTweetId,
   resolveAccount,
 } from '../src/commands.js';
@@ -1392,6 +1393,44 @@ test('指令解析：/回复 开 与 /转贴 关 作用于全部已订阅账号'
   // 不是这条指令
   assert.equal(parseItemToggle(normalizeCommand('/翻译 开')), null);
   assert.equal(parseItemToggle(normalizeCommand('/订阅 hina')), null);
+});
+
+test('状态列表只列已订阅的账号，格式固定', () => {
+  const text = formatItemStatus({
+    kindName: '转贴',
+    verb: '转贴',
+    subs: ['yuna', 'ami', 'aimi', 'reo', 'hina'],
+    names: {
+      yuna: '秋山由奈',
+      ami: '前島亜美_Official',
+      aimi: '爱美/AIMI',
+      reo: '倉知玲鳳',
+      hina: '青木阳菜',
+    },
+    flags: { yuna: true, ami: true, aimi: true, reo: false, hina: true },
+  });
+
+  assert.equal(
+    text,
+    [
+      'ℹ️ 当前已订阅的「转贴」转发状态：',
+      '  ✅ yuna · 秋山由奈',
+      '  ✅ ami · 前島亜美_Official',
+      '  ✅ aimi · 爱美/AIMI',
+      '  🔕 reo · 倉知玲鳳',
+      '  ✅ hina · 青木阳菜',
+      '',
+      '用法：/转贴 <账号> 开|关',
+      '      /转贴 开|关（批量）',
+    ].join('\n'),
+  );
+  // 没订阅的账号不出现在列表里
+  assert.doesNotMatch(text, /未订阅/);
+
+  // 一个都没订阅时的提示
+  const empty = formatItemStatus({ kindName: '回复', verb: '回复' });
+  assert.match(empty, /本会话还没订阅任何账号/);
+  assert.match(empty, /\/回复 开\|关（批量）/);
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

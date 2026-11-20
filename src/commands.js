@@ -105,3 +105,18 @@ export function parseItemToggle(norm) {
     wantOn: SWITCH_ON.includes(toggle),
   };
 }
+
+/**
+ * 「/转贴」「/回复」的状态列表：只列本会话已订阅的账号。
+ * @param {{kindName:string, verb:string, subs:string[], names?:Record<string,string>, flags?:Record<string,boolean>}} opts
+ */
+export function formatItemStatus({ kindName, verb, subs = [], names = {}, flags = {} }) {
+  const lines = subs.length
+    ? [`ℹ️ 当前已订阅的「${kindName}」转发状态：`]
+    : ['ℹ️ 本会话还没订阅任何账号，先发 /订阅 <账号>'];
+  for (const key of subs) {
+    lines.push(`  ${flags[key] ? '✅' : '🔕'} ${key} · ${names[key] || key}`);
+  }
+  lines.push(`\n用法：/${verb} <账号> 开|关\n      /${verb} 开|关（批量）`);
+  return lines.join('\n');
+}

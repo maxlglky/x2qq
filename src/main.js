@@ -11,6 +11,7 @@ import {
   matchKeyword,
   normalizeCommand,
   parseItemToggle,
+  formatItemStatus,
   parseTweetId,
   resolveAccount,
 } from './commands.js';
@@ -424,18 +425,14 @@ function createWatcher({ cfg, logger, store, qq, poller }) {
             : `🔕 已关闭 ${target.key}（${target.displayName}）的「${kindName}」转发`;
           logger.info(`会话 ${openid} ${target.key} ${kindName} -> ${wantOn ? '开' : '关'}`);
         } else {
-          const lines = ['ℹ️ 当前「' + kindName + '」转发状态：'];
-          for (const acc of cfg.accounts) {
-            const f = store.getItemFlags(openid, acc.key);
-            const subscribed = subs.includes(acc.key);
-            lines.push(
-              `  ${f[kind] ? '✅' : '🔕'} ${acc.key} · ${acc.displayName}${subscribed ? '' : '（未订阅）'}`,
-            );
+          // 只列本会话已订阅的账号，没订阅的不显示
+          const names = {};
+          const flags = {};
+          for (const key of subs) {
+            names[key] = cfg.accounts.find((a) => a.key === key)?.displayName || key;
+            flags[key] = store.getItemFlags(openid, key)[kind];
           }
-          lines.push(
-            `\n用法：/${verb} <账号> 开|关\n      /${verb} 开|关（作用于本会话全部已订阅账号）`,
-          );
-          replyText = lines.join('\n');
+          replyText = formatItemStatus({ kindName, verb, subs, names, flags });
         }
 
         if (commands.reply !== false && msg.msgId) {
