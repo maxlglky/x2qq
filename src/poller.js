@@ -331,10 +331,8 @@ export class Poller {
       .replace(/^@/, '')
       .toLowerCase();
     if (self && h === self) return '自己';
-    const acc = this.accounts().find(
-      (a) => String(a.handle || '').replace(/^@/, '').toLowerCase() === h,
-    );
-    return acc?.displayName || raw;
+    // 别的账号保持 handle 原样；有回复上下文时展示层会用原推作者昵称
+    return raw;
   }
 
   async collectTweets(account) {

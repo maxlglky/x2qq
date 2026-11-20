@@ -1446,9 +1446,8 @@ test('回复对象是自己时，「↩ 回复」写「自己」', () => {
   // 自己回自己 → 自己
   assert.equal(poller.replyToLabel(hina, 'aoki__hina'), '自己');
   assert.equal(poller.replyToLabel(hina, '@aoki__hina'), '自己');
-  // 回复另一个已配置账号 → 那个账号的昵称
-  assert.equal(poller.replyToLabel(hina, 'yunachan_akb48'), '秋山由奈');
-  // 没配置的账号保持 handle 原样
+  // 别的账号保持 handle 原样（昵称由回复上下文提供）
+  assert.equal(poller.replyToLabel(hina, 'yunachan_akb48'), 'yunachan_akb48');
   assert.equal(poller.replyToLabel(hina, 'azuki_yagi0322'), 'azuki_yagi0322');
   assert.equal(poller.replyToLabel(hina, ''), '');
 
