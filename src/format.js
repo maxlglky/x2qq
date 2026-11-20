@@ -349,7 +349,9 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
   const rawBody = tweet.text?.trim() || '';
   const originalBody = isReplyLike ? stripLeadingMentions(rawBody) : rawBody;
   const translatedText = String(ctx.translatedText || '').trim();
-  const bodyText = translatedText || originalBody;
+  // 回复类推文的正文开头是「@被回复的人」，X 客户端不显示；译文里也照样去掉
+  let bodyText = translatedText || originalBody;
+  if (isReplyLike) bodyText = stripLeadingMentions(bodyText);
   if (bodyText) {
     // 标签边界取原文的：译文常把标签后面的空格吃掉，只看译文会把整句吞进链接
     lines.push(

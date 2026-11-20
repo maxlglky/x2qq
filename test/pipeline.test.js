@@ -1486,6 +1486,45 @@ test('回复对象是自己时，「↩ 回复」写「自己」', () => {
   assert.match(other, /^\*\*↩ 回复 八木愛月（AKB48）\*\*$/m);
 });
 
+test('回复正文开头的 @被回复人 会去掉（译文也去掉）', () => {
+  const cfg = baseConfig();
+  const body = '@airi_sato0624 https://x.com/airi_sato0624 可爱(*´`)♡';
+  const reply = {
+    id: 'x:2',
+    link: 'https://x.com/a/status/2',
+    text: body,
+    author: '某成员',
+    published: new Date('2026-11-20T12:00:00Z'),
+    images: [],
+    isReply: true,
+    replyTo: 'airi_sato0624',
+  };
+
+  // 原文
+  const plain = formatTweetMarkdown(reply, cfg, {});
+  assert.doesNotMatch(plain, /@airi_sato0624/, '正文开头的 mention 要去掉');
+  assert.match(plain, /https:\/\/x\.com\/airi_sato0624/, '正文里的链接保留');
+  assert.match(plain, /可爱/, '正文内容保留');
+
+  // 译文（LLM 也会把开头的 @ 带上）
+  const translated = formatTweetMarkdown(reply, cfg, {
+    translatedText: body,
+    translateBy: '大肥鱼',
+  });
+  assert.doesNotMatch(translated, /@airi_sato0624/);
+  assert.match(translated, /可爱/);
+
+  // 不是回复时，开头的 @ 是正文的一部分，不能删
+  const normal = {
+    ...reply,
+    isReply: false,
+    replyTo: '',
+    text: '@airi_sato0624 你好',
+  };
+  const kept = formatTweetMarkdown(normal, cfg, {});
+  assert.match(kept, /@airi_sato0624/);
+});
+
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
   assert.equal(formatFooterTime(new Date('2026-11-06T11:48:00Z'), 'Asia/Shanghai'), '2026-11-06，19:48');
 
