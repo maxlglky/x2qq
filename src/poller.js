@@ -319,6 +319,24 @@ export class Poller {
     return out;
   }
 
+  /**
+   * 被回复对象的显示名：GraphQL 只给 handle（`in_reply_to_screen_name`），
+   * 自己回自己、或者回复的是另一个已配置账号时，直接显示那个账号的昵称。
+   */
+  replyToLabel(acfg, handleLike) {
+    const raw = String(handleLike || '').trim();
+    const h = raw.replace(/^@/, '').toLowerCase();
+    if (!h) return '';
+    const self = String(acfg?.x?.handle || '')
+      .replace(/^@/, '')
+      .toLowerCase();
+    if (self && h === self) return acfg.x.displayName || raw;
+    const acc = this.accounts().find(
+      (a) => String(a.handle || '').replace(/^@/, '').toLowerCase() === h,
+    );
+    return acc?.displayName || raw;
+  }
+
   async collectTweets(account) {
     const acc = account || this.accounts()[0];
     const acfg = this.accountCfg(acc);
@@ -613,6 +631,7 @@ export class Poller {
                 formatTweetMarkdown(displayTweet, acfg, {
                   ...(ctx || {}),
                   replyContext,
+                  replyTo: this.replyToLabel(acfg, detail?.replyTo || displayTweet?.replyTo),
                   translatedText: group.translate ? translatedText : '',
                   translatedQuoteText: group.translate ? translatedQuoteText : '',
                   translatedReplyText: group.translate ? translatedReplyText : '',
@@ -834,6 +853,7 @@ export class Poller {
         formatTweetMarkdown(displayTweet, acfg, {
           ...(ctx || {}),
           replyContext,
+          replyTo: this.replyToLabel(acfg, detail?.replyTo || displayTweet?.replyTo),
           translatedText,
           translatedQuoteText,
           translatedReplyText,

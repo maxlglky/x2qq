@@ -1433,6 +1433,43 @@ test('状态列表只列已订阅的账号，格式固定', () => {
   assert.match(empty, /\/回复 开\|关（批量）/);
 });
 
+test('回复对象是自己时，「↩ 回复 X」显示自己的昵称', () => {
+  const cfg = baseConfig();
+  cfg.x.displayName = '青木阳菜';
+  cfg.accounts = [
+    { key: 'hina', handle: 'aoki__hina', displayName: '青木阳菜' },
+    { key: 'yuna', handle: 'yunachan_akb48', displayName: '秋山由奈' },
+  ];
+  const poller = new Poller({ cfg, qq: null, store: null, logger: captureLogger() });
+  const hina = poller.accountCfg(cfg.accounts[0]);
+
+  // 自己回自己
+  assert.equal(poller.replyToLabel(hina, 'aoki__hina'), '青木阳菜');
+  assert.equal(poller.replyToLabel(hina, '@aoki__hina'), '青木阳菜');
+  // 回复另一个已配置账号
+  assert.equal(poller.replyToLabel(hina, 'yunachan_akb48'), '秋山由奈');
+  // 没配置的账号保持 handle 原样
+  assert.equal(poller.replyToLabel(hina, 'azuki_yagi0322'), 'azuki_yagi0322');
+  assert.equal(poller.replyToLabel(hina, ''), '');
+
+  // 渲染层：拿不到回复上下文时，用传进来的显示名（而不是裸 handle）
+  const tweet = {
+    id: 'x:1',
+    link: 'https://x.com/aoki__hina/status/1',
+    text: '正文',
+    author: '青木阳菜',
+    published: new Date('2026-11-20T10:00:00Z'),
+    images: [],
+    isReply: true,
+    replyTo: 'aoki__hina',
+  };
+  const withLabel = formatTweetMarkdown(tweet, cfg, { replyTo: '青木阳菜' });
+  assert.match(withLabel, /^\*\*↩ 回复 青木阳菜\*\*$/m);
+  // 不传时退回 tweet.replyTo（handle）
+  const withoutLabel = formatTweetMarkdown(tweet, cfg, {});
+  assert.match(withoutLabel, /↩ 回复 aoki__hina/);
+});
+
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {
   assert.equal(formatFooterTime(new Date('2026-11-06T11:48:00Z'), 'Asia/Shanghai'), '2026-11-06，19:48');
 
