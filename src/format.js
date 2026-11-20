@@ -336,7 +336,9 @@ export function formatTweetMarkdown(tweet, cfg, ctx = {}) {
   const isReplyLike = !ctx.repost && (tweet.isReply || Boolean(replyTo));
 
   if (isReplyLike) {
-    const target = ctx.replyContext?.name || replyTo;
+    // 自己回自己写「自己」；否则优先用被回复原推的作者昵称
+    const selfReply = replyTo === '自己' || ctx.selfReply === true;
+    const target = selfReply ? '自己' : ctx.replyContext?.name || replyTo;
     lines.push(head, target ? `**↩ 回复 ${target}**` : '**↩ 回复**', '');
   } else {
     lines.push(head, '');

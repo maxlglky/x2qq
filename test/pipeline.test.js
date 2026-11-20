@@ -1433,7 +1433,7 @@ test('状态列表只列已订阅的账号，格式固定', () => {
   assert.match(empty, /\/回复 开\|关（批量）/);
 });
 
-test('回复对象是自己时，「↩ 回复 X」显示自己的昵称', () => {
+test('回复对象是自己时，「↩ 回复」写「自己」', () => {
   const cfg = baseConfig();
   cfg.x.displayName = '青木阳菜';
   cfg.accounts = [
@@ -1443,16 +1443,15 @@ test('回复对象是自己时，「↩ 回复 X」显示自己的昵称', () =>
   const poller = new Poller({ cfg, qq: null, store: null, logger: captureLogger() });
   const hina = poller.accountCfg(cfg.accounts[0]);
 
-  // 自己回自己
-  assert.equal(poller.replyToLabel(hina, 'aoki__hina'), '青木阳菜');
-  assert.equal(poller.replyToLabel(hina, '@aoki__hina'), '青木阳菜');
-  // 回复另一个已配置账号
+  // 自己回自己 → 自己
+  assert.equal(poller.replyToLabel(hina, 'aoki__hina'), '自己');
+  assert.equal(poller.replyToLabel(hina, '@aoki__hina'), '自己');
+  // 回复另一个已配置账号 → 那个账号的昵称
   assert.equal(poller.replyToLabel(hina, 'yunachan_akb48'), '秋山由奈');
   // 没配置的账号保持 handle 原样
   assert.equal(poller.replyToLabel(hina, 'azuki_yagi0322'), 'azuki_yagi0322');
   assert.equal(poller.replyToLabel(hina, ''), '');
 
-  // 渲染层：拿不到回复上下文时，用传进来的显示名（而不是裸 handle）
   const tweet = {
     id: 'x:1',
     link: 'https://x.com/aoki__hina/status/1',
@@ -1463,11 +1462,29 @@ test('回复对象是自己时，「↩ 回复 X」显示自己的昵称', () =>
     isReply: true,
     replyTo: 'aoki__hina',
   };
-  const withLabel = formatTweetMarkdown(tweet, cfg, { replyTo: '青木阳菜' });
-  assert.match(withLabel, /^\*\*↩ 回复 青木阳菜\*\*$/m);
-  // 不传时退回 tweet.replyTo（handle）
-  const withoutLabel = formatTweetMarkdown(tweet, cfg, {});
-  assert.match(withoutLabel, /↩ 回复 aoki__hina/);
+
+  // 有回复上下文时也写「自己」（不能又被上下文里的作者名覆盖）
+  const withContext = formatTweetMarkdown(tweet, cfg, {
+    replyTo: '自己',
+    replyContext: { name: '青木阳菜', text: '原推正文', link: 'https://x.com/aoki__hina/status/0' },
+  });
+  assert.match(withContext, /^\*\*↩ 回复 自己\*\*$/m);
+  assert.doesNotMatch(withContext, /↩ 回复 青木阳菜/);
+
+  // 没有上下文时同样是「自己」
+  const withoutContext = formatTweetMarkdown(tweet, cfg, { replyTo: '自己' });
+  assert.match(withoutContext, /^\*\*↩ 回复 自己\*\*$/m);
+
+  // 回复别人时仍用对方昵称
+  const other = formatTweetMarkdown(
+    { ...tweet, replyTo: 'azuki_yagi0322' },
+    cfg,
+    {
+      replyTo: '八木愛月（AKB48）',
+      replyContext: { name: '八木愛月（AKB48）', text: 'x', link: 'https://x.com/azuki_yagi0322/status/0' },
+    },
+  );
+  assert.match(other, /^\*\*↩ 回复 八木愛月（AKB48）\*\*$/m);
 });
 
 test('页脚时间是「日期，时间」格式（全角逗号）', () => {

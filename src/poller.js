@@ -321,7 +321,7 @@ export class Poller {
 
   /**
    * 被回复对象的显示名：GraphQL 只给 handle（`in_reply_to_screen_name`），
-   * 自己回自己、或者回复的是另一个已配置账号时，直接显示那个账号的昵称。
+   * 自己回自己时直接写「自己」，回复的是另一个已配置账号则用那个账号的昵称。
    */
   replyToLabel(acfg, handleLike) {
     const raw = String(handleLike || '').trim();
@@ -330,7 +330,7 @@ export class Poller {
     const self = String(acfg?.x?.handle || '')
       .replace(/^@/, '')
       .toLowerCase();
-    if (self && h === self) return acfg.x.displayName || raw;
+    if (self && h === self) return '自己';
     const acc = this.accounts().find(
       (a) => String(a.handle || '').replace(/^@/, '').toLowerCase() === h,
     );
